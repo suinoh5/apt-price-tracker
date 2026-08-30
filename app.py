@@ -19,8 +19,8 @@ from database import (
     get_recent_alerts
 )
 from collector import generate_realistic_historical_data, fetch_molit_api, detect_and_log_alerts
-from analyzer import calculate_complex_metrics, add_moving_averages
-from predictor import predict_future_prices
+from analyzer import calculate_complex_metrics, add_moving_averages, calculate_rsi, calculate_supply_demand_metrics
+from predictor import predict_future_prices, calculate_investment_score
 
 
 # Page Config
@@ -537,76 +537,137 @@ with tab1:
 # TAB 2: AI 시세 예측 & 미래 전망
 # -------------------------------------------------------------
 with tab2:
-    st.markdown("##### 🤖 머신러닝 시계열 회귀 기반 시세 예측 & 시장 모멘텀 분석")
-    st.caption("과거 실거래 추세와 가중 회귀 모델(Time-Weighted Ridge Regression)을 결합하여 향후 시세를 전망합니다.")
+    st.markdown("##### 🤖 전문가급 AI 시세 예측 & 종합 투자 매력도 분석")
+    st.caption("부동산 퀀트 지표(RSI, 수급 회전율), 4대 팩터 종합 매력도 스코어링 및 3대 시나리오(Bull/Base/Bear) 시뮬레이션 모델")
     
     if df_filtered.empty or len(df_filtered) < 5:
         st.warning("정밀 예측을 위해 최소 5건 이상의 실거래 데이터가 필요합니다.")
     else:
+        total_hh = complex_info.get("total_households", 1000) if complex_info else 1000
+        
+        # 1. 지표 계산
+        rsi_data = calculate_rsi(df_filtered)
+        supply_demand = calculate_supply_demand_metrics(df_filtered, total_households=total_hh)
         pred_res = predict_future_prices(df_filtered, forecast_days=365)
         
         if pred_res["success"]:
-            # 시장 진단 배너
-            st.markdown(f"""
-            <div class="diagnosis-box" style="border-left-color: {pred_res['momentum_color']};">
-                <div style="font-size: 1.1rem; font-weight: 700; color: {pred_res['momentum_color']}; margin-bottom: 6px;">
-                    {pred_res['momentum_status']}
-                </div>
-                <div style="font-size: 0.95rem; color: #2d3748; line-height: 1.6;">
-                    {pred_res['diagnosis']}
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+            score_data = calculate_investment_score(
+                metrics=metrics,
+                rsi_data=rsi_data,
+                supply_demand=supply_demand,
+                momentum_pct=pred_res["recent_momentum_pct"]
+            )
             
-            # 예측 시세 3종 카드 (3개월, 6개월, 1년)
-            f_col1, f_col2, f_col3 = st.columns(3)
+            # =========================================================
+            # 🏆 SECTION 1: 종합 AI 투자 매력도 스코어 & RSI 계기판
+            # =========================================================
+            sec1_col1, sec1_col2 = st.columns([1.1, 0.9])
             
-            with f_col1:
-                f3 = pred_res["forecast_3m"]
-                s_sign = "+" if f3["change_pct"] > 0 else ""
-                s_cls = "badge-up" if f3["change_pct"] > 0 else "badge-down"
+            with sec1_col1:
                 st.markdown(f"""
-                <div class="metric-card">
-                    <div class="metric-title">3개월 후 예상 시세 ({f3['date']})</div>
-                    <div class="metric-value">{f3['price_str']}</div>
-                    <div class="metric-sub">
-                        <span class="{s_cls}">현재 대비 {s_sign}{f3['change_pct']}%</span><br>
-                        <small style="color: #718096;">예상 범위: {f3['lower_str']} ~ {f3['upper_str']}</small>
+                <div style="background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%); border-radius: 12px; padding: 20px 22px; color: white; margin-bottom: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div>
+                            <span style="font-size: 0.82rem; background: rgba(255,255,255,0.15); padding: 3px 8px; border-radius: 4px; font-weight: 600;">AI 종합 투자 매력도</span>
+                            <h2 style="font-size: 2.2rem; font-weight: 800; margin: 8px 0 2px 0; color: #f7fafc;">
+                                {score_data['total_score']} <span style="font-size: 1.1rem; font-weight: 500; color: #a0aec0;">/ 100점</span>
+                            </h2>
+                            <div style="font-size: 0.95rem; font-weight: 700; color: {score_data['color']}; margin-bottom: 6px;">
+                                {score_data['grade']}
+                            </div>
+                        </div>
+                        <div style="text-align: right; font-size: 2.4rem;">
+                            🏆
+                        </div>
+                    </div>
+                    <div style="font-size: 0.84rem; color: #e2e8f0; line-height: 1.5; margin-top: 6px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 8px;">
+                        {score_data['verdict']}
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; font-size: 0.78rem; color: #cbd5e0;">
+                        <div>• 모멘텀: <strong>{score_data['sub_scores']['모멘텀 (추세 강도)']}점</strong></div>
+                        <div>• 저평가 메리트: <strong>{score_data['sub_scores']['가격 메리트 (저평가도)']}점</strong></div>
+                        <div>• 수급 에너지: <strong>{score_data['sub_scores']['거래량 에너지 (수급)']}점</strong></div>
+                        <div>• 가격 안정성: <strong>{score_data['sub_scores']['가격 변동 안정성']}점</strong></div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
                 
-            with f_col2:
-                f6 = pred_res["forecast_6m"]
-                s_sign = "+" if f6["change_pct"] > 0 else ""
-                s_cls = "badge-up" if f6["change_pct"] > 0 else "badge-down"
+            with sec1_col2:
                 st.markdown(f"""
-                <div class="metric-card">
-                    <div class="metric-title">6개월 후 예상 시세 ({f6['date']})</div>
-                    <div class="metric-value">{f6['price_str']}</div>
-                    <div class="metric-sub">
-                        <span class="{s_cls}">현재 대비 {s_sign}{f6['change_pct']}%</span><br>
-                        <small style="color: #718096;">예상 범위: {f6['lower_str']} ~ {f6['upper_str']}</small>
+                <div style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px 22px; margin-bottom: 15px; box-shadow: 0 2px 6px rgba(0,0,0,0.03);">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div>
+                            <span style="font-size: 0.82rem; color: #718096; font-weight: 600;">부동산 RSI 상대강도지수</span>
+                            <h2 style="font-size: 2.2rem; font-weight: 800; margin: 8px 0 2px 0; color: {rsi_data['color']};">
+                                {rsi_data['rsi']} <span style="font-size: 1.0rem; font-weight: 500; color: #718096;">/ 100</span>
+                            </h2>
+                            <div style="font-size: 0.95rem; font-weight: 700; color: {rsi_data['color']}; margin-bottom: 6px;">
+                                {rsi_data['status']}
+                            </div>
+                        </div>
+                        <div style="text-align: right; font-size: 2.2rem;">
+                            🧭
+                        </div>
+                    </div>
+                    <div style="font-size: 0.84rem; color: #4a5568; line-height: 1.5; margin-top: 6px; border-top: 1px solid #edf2f7; padding-top: 8px;">
+                        {rsi_data['desc']}
+                    </div>
+                    <div style="margin-top: 10px; font-size: 0.76rem; color: #718096;">
+                        기준: 70 이상(과열 주의) | 35~70(적정 균형) | 35 이하(바닥권 매수)
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
-                
-            with f_col3:
-                f12 = pred_res["forecast_12m"]
-                s_sign = "+" if f12["change_pct"] > 0 else ""
-                s_cls = "badge-up" if f12["change_pct"] > 0 else "badge-down"
+
+            # =========================================================
+            # 🌊 SECTION 2: 거래 회전율 & 수급 진단 지표 카드 (4-Grid)
+            # =========================================================
+            st.markdown("###### 🌊 거래량 & 수급 에너지 진단")
+            sq1, sq2, sq3, sq4 = st.columns(4)
+            
+            with sq1:
                 st.markdown(f"""
                 <div class="metric-card">
-                    <div class="metric-title">1년 후 예상 시세 ({f12['date']})</div>
-                    <div class="metric-value">{f12['price_str']}</div>
-                    <div class="metric-sub">
-                        <span class="{s_cls}">현재 대비 {s_sign}{f12['change_pct']}%</span><br>
-                        <small style="color: #718096;">예상 범위: {f12['lower_str']} ~ {f12['upper_str']}</small>
-                    </div>
+                    <div class="metric-title">최근 6개월 거래 회전율</div>
+                    <div class="metric-value">{supply_demand['turnover_rate_str']}</div>
+                    <div class="metric-sub">총 세대수 중 {supply_demand['tx_count_6m']}건 체결</div>
                 </div>
                 """, unsafe_allow_html=True)
                 
-            # 미래 시세 예측 궤적 차트 (Plotly)
+            with sq2:
+                adv_color = "#e53e3e" if supply_demand['advance_ratio'] >= 50 else "#3182ce"
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-title">상승 거래 체결 비중</div>
+                    <div class="metric-value" style="color: {adv_color};">{supply_demand['advance_ratio']}%</div>
+                    <div class="metric-sub">상승 {supply_demand['up_count']}건 / 하락 {supply_demand['down_count']}건</div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+            with sq3:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-title">평균 거래 체결 주기</div>
+                    <div class="metric-value">{supply_demand['avg_interval_days']}일</div>
+                    <div class="metric-sub">약 {supply_demand['avg_interval_days']:.0f}일마다 1건 발생</div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+            with sq4:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-title">최근 6개월 가격 모멘텀</div>
+                    <div class="metric-value" style="color: {pred_res['momentum_color']};">{pred_res['recent_momentum_pct']:+0.2f}%</div>
+                    <div class="metric-sub">{pred_res['momentum_status'].split(' ')[1]}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            st.divider()
+
+            # =========================================================
+            # 🎯 SECTION 3: 3대 시나리오 (Bull / Base / Bear) 예측 차트 & 비교 표
+            # =========================================================
+            st.markdown("###### 🎯 AI 3대 시나리오 (상승 🚀 / 기본 🎯 / 보수 🛡️) 시세 전망")
+            
             future_df = pred_res["future_df"]
             hist_fit_df = pred_res["historical_fit_df"]
             
@@ -618,55 +679,57 @@ with tab2:
                 y=df_filtered["deal_amount"] / 10000,
                 mode="markers",
                 name="실제 실거래가",
-                marker=dict(color="#4a5568", size=7, opacity=0.7),
+                marker=dict(color="#4a5568", size=7, opacity=0.75),
                 hovertemplate="<b>일자</b>: %{x|%Y-%m-%d}<br><b>실거래가</b>: %{y:.2f}억원<extra></extra>"
             ))
             
-            # 2. 과거 추세 적합선
+            # 2. 과거 추세선
             fig_pred.add_trace(go.Scatter(
                 x=hist_fit_df["deal_date"],
                 y=hist_fit_df["fitted_price"] / 10000,
                 mode="lines",
-                name="과거 시세 추세선",
-                line=dict(color="#718096", width=1.5, dash="dash")
-            ))
-            
-            # 3. 신뢰구간 밴드 (Upper & Lower Band)
-            fig_pred.add_trace(go.Scatter(
-                x=future_df["deal_date"],
-                y=future_df["upper_band"] / 10000,
-                mode="lines",
-                line=dict(width=0),
-                showlegend=False,
-                hoverinfo="skip"
-            ))
-            fig_pred.add_trace(go.Scatter(
-                x=future_df["deal_date"],
-                y=future_df["lower_band"] / 10000,
-                mode="lines",
-                fill="tonexty",
-                fillcolor="rgba(229, 62, 62, 0.12)",
-                line=dict(width=0),
-                name="80% 예측 신뢰구간 (밴드)",
+                name="과거 추세선",
+                line=dict(color="#a0aec0", width=1.5, dash="dot"),
                 hoverinfo="skip"
             ))
             
-            # 4. 미래 예측 중심선
+            # 3. 🚀 상승 시나리오 (Bull Case)
             fig_pred.add_trace(go.Scatter(
                 x=future_df["deal_date"],
-                y=future_df["predicted_price"] / 10000,
+                y=future_df["bull_price"] / 10000,
                 mode="lines",
-                name="AI 예측 시세선",
-                line=dict(color="#e53e3e", width=2.5)
+                name="🚀 상승 시나리오 (Bull)",
+                line=dict(color="#38a169", width=2.5, dash="dash"),
+                hovertemplate="<b>상승 시나리오</b>: %{y:.2f}억원<extra></extra>"
+            ))
+            
+            # 4. 🎯 기본 시나리오 (Base Case)
+            fig_pred.add_trace(go.Scatter(
+                x=future_df["deal_date"],
+                y=future_df["base_price"] / 10000,
+                mode="lines",
+                name="🎯 기본 시나리오 (Base)",
+                line=dict(color="#e53e3e", width=3.0),
+                hovertemplate="<b>기본 시나리오</b>: %{y:.2f}억원<extra></extra>"
+            ))
+            
+            # 5. 🛡️ 보수 시나리오 (Bear Case)
+            fig_pred.add_trace(go.Scatter(
+                x=future_df["deal_date"],
+                y=future_df["bear_price"] / 10000,
+                mode="lines",
+                name="🛡️ 보수 시나리오 (Bear)",
+                line=dict(color="#3182ce", width=2.0, dash="dash"),
+                hovertemplate="<b>보수 시나리오 (지지선)</b>: %{y:.2f}억원<extra></extra>"
             ))
             
             fig_pred.update_layout(
                 title=dict(
-                    text=f"📈 {selected_complex} ({selected_area}㎡) 12개월 시세 예측",
+                    text=f"📈 {selected_complex} ({selected_area}㎡) 향후 12개월 3대 시나리오 전망선",
                     font=dict(size=13.5, color="#1a202c")
                 ),
                 template="plotly_white",
-                height=420,
+                height=440,
                 margin=dict(l=15, r=15, t=45, b=15),
                 hovermode="closest",
                 legend=dict(
@@ -692,13 +755,43 @@ with tab2:
                 }
             )
             
-            # AI 종합 진단 리포트 요약
-            with st.expander("💡 AI 시장 진단 및 매수/매도 참고 가이드", expanded=True):
+            # 3대 시나리오 비교 테이블
+            f3 = pred_res["forecast_3m"]
+            f6 = pred_res["forecast_6m"]
+            f12 = pred_res["forecast_12m"]
+            
+            scenario_table = pd.DataFrame([
+                {
+                    "예측 시점": f"3개월 후 ({f3['date']})",
+                    "🚀 상승 시나리오 (Bull)": f"{f3['bull_price_str']} ({f3['bull_pct']:+0.1f}%)",
+                    "🎯 기본 시나리오 (Base)": f"{f3['base_price_str']} ({f3['base_pct']:+0.1f}%)",
+                    "🛡️ 보수 시나리오 (Bear)": f"{f3['bear_price_str']} ({f3['bear_pct']:+0.1f}%)",
+                },
+                {
+                    "예측 시점": f"6개월 후 ({f6['date']})",
+                    "🚀 상승 시나리오 (Bull)": f"{f6['bull_price_str']} ({f6['bull_pct']:+0.1f}%)",
+                    "🎯 기본 시나리오 (Base)": f"{f6['base_price_str']} ({f6['base_pct']:+0.1f}%)",
+                    "🛡️ 보수 시나리오 (Bear)": f"{f6['bear_price_str']} ({f6['bear_pct']:+0.1f}%)",
+                },
+                {
+                    "예측 시점": f"1년 후 ({f12['date']})",
+                    "🚀 상승 시나리오 (Bull)": f"{f12['bull_price_str']} ({f12['bull_pct']:+0.1f}%)",
+                    "🎯 기본 시나리오 (Base)": f"{f12['base_price_str']} ({f12['base_pct']:+0.1f}%)",
+                    "🛡️ 보수 시나리오 (Bear)": f"{f12['bear_price_str']} ({f12['bear_pct']:+0.1f}%)",
+                }
+            ])
+            st.dataframe(scenario_table, use_container_width=True, hide_index=True)
+            
+            # =========================================================
+            # 💡 SECTION 4: AI 시장 진단 및 종합 투자 전략 리포트
+            # =========================================================
+            with st.expander("💡 AI 시장 진단 및 종합 투자 가이드 리포트", expanded=True):
                 st.markdown(f"""
-                - **핵심 모멘텀 진단**: **{pred_res['momentum_status']}**
-                - **단기 변동 전망**: 향후 3개월 내 약 **{f3['price_str']}** 수준({f3['change_pct']:+0.1f}%)에서 거래 형성 가능성이 높습니다.
-                - **중장기 추세 전망**: 향후 1년 시세 범위는 **{f12['lower_str']} ~ {f12['upper_str']}**로 예상됩니다.
-                - **주의 사항**: 본 예측치는 과거 실거래가 시계열 추세 모델에 기반한 기술적 분석 결과이며, 기준금리 변화, 정부 부동산 규제 정책 및 대출 환경 등 거시 경제 변수에 따라 실제 거래가격과 차이가 발생할 수 있습니다.
+                - **핵심 모멘텀 진단**: **{pred_res['momentum_status']}** (최근 6개월 등락: **{pred_res['recent_momentum_pct']:+0.2f}%**)
+                - **RSI 매수/매도 심리**: **{rsi_data['status']}** (현재 RSI: **{rsi_data['rsi']}점**) - {rsi_data['desc']}
+                - **단기 매매 전략**: 향후 3개월 내 기본 시나리오 기준 약 **{f3['base_price_str']}** 형성 가능성이 높으며, 상단 돌파 시 **{f3['bull_price_str']}**까지 상승 여력이 존재합니다.
+                - **중장기 1년 시세 밴드**: **{f12['bear_price_str']} (보수 하방 지지선) ~ {f12['bull_price_str']} (상승 목표가)** 범위 내에서 형성될 것으로 예상됩니다.
+                - **투자 리스크 요인**: 본 모델은 과거 국토교통부 실거래가의 시간 가중 통계 회귀 모델에 기반하며, 한국은행 기준금리 변동, DSR 대출 규제 정책 및 지역 입주 물량 등 거시적 변수에 따라 실제 거래가격에 차이가 발생할 수 있습니다.
                 """)
 
 
