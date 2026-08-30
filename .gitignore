@@ -1,0 +1,39 @@
+# Python Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python Cache & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.pytest_cache/
+
+# Environment Variables & Secrets (API Keys, Passwords)
+.env
+.env.*
+*.env
+*.key
+*.pem
+secrets.toml
+.streamlit/secrets.toml
+
+# Local Databases & Private Data
+data/*.db
+data/*.sqlite3
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs & Temporary Files
+*.log
+scratch/
+temp/
+tmp/
+
+# OS & IDE Configuration
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
