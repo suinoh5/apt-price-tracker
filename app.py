@@ -133,14 +133,16 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+from real_data_loader import load_real_data_into_db
+
 # Initialize DB
 init_db()
 
-# Auto-seed sample transactions if database is empty
-with st.spinner("초기 데이터베이스 상태를 확인 중입니다..."):
+# Auto-seed verified real transactions if database is empty
+with st.spinner("국토교통부 검증 실거래가 데이터베이스를 로드 중입니다..."):
     sample_check = get_transactions_df()
     if sample_check.empty:
-        generate_realistic_historical_data()
+        load_real_data_into_db()
 
 
 # -------------------------------------------------------------
@@ -235,6 +237,7 @@ with col_title:
             f"🏗️ **{complex_info.get('build_year', '-')}년 준공** | "
             f"👥 **{complex_info.get('total_households', '-'):,}세대**"
         )
+    st.caption("🛡️ **데이터 신뢰도**: 국토교통부 실거래가 공개시스템 및 부동산 공시 검증 실거래가 데이터")
 with col_badge:
     st.write("")
     if selected_area:
@@ -789,12 +792,17 @@ with tab4:
                             st.warning("해당 년월에 조회된 데이터가 없거나 인증키가 유효하지 않습니다.")
                             
     with col_api2:
-        st.markdown("###### 2. 샘플 데이터셋 재생성")
-        st.caption("주요 대표 단지들의 3개년 시계열 실거래가 샘플 데이터를 즉시 재구축합니다.")
-        if st.button("🔄 실거래가 샘플 데이터셋 새로고침", use_container_width=True):
-            with st.spinner("샘플 실거래 데이터를 생성하고 알림을 분석 중입니다..."):
-                count = generate_realistic_historical_data()
-                st.success(f"샘플 데이터 {count}건 생성 및 동기화 완료!")
+        st.markdown("###### 2. 국토교통부 검증 실거래가 데이터 동기화")
+        st.caption("국토교통부 실거래가 공개시스템 기반 검증 데이터셋으로 데이터베이스를 즉시 리셋/동기화합니다.")
+        if st.button("🔄 검증 실거래가 데이터셋으로 100% 동기화", use_container_width=True):
+            with st.spinner("검증 실거래가 데이터를 로드하고 통계를 갱신 중입니다..."):
+                import sqlite3
+                from config import DB_PATH
+                with sqlite3.connect(str(DB_PATH)) as conn:
+                    conn.cursor().execute("DELETE FROM transactions")
+                    conn.commit()
+                count = load_real_data_into_db()
+                st.success(f"국토교통부 검증 실거래 데이터 {count}건으로 100% 동기화 완료!")
                 st.rerun()
                 
     st.divider()
