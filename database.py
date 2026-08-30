@@ -1,5 +1,5 @@
 """
-Apt Price Tracker - SQLite Database Management
+Apt Price Tracker - SQLite Database Management (WAL Mode & Concurrency Safe)
 """
 import sqlite3
 import pandas as pd
@@ -9,9 +9,14 @@ from config import DB_PATH, DEFAULT_COMPLEXES
 
 
 def get_connection():
-    """Get a database connection."""
-    conn = sqlite3.connect(str(DB_PATH))
+    """Get a database connection with WAL mode and long busy timeout."""
+    conn = sqlite3.connect(str(DB_PATH), timeout=30.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA busy_timeout = 30000")
+    except Exception:
+        pass
     return conn
 
 
@@ -48,8 +53,8 @@ def init_db():
                 deal_month INTEGER NOT NULL,
                 deal_day INTEGER NOT NULL,
                 deal_date TEXT NOT NULL,
-                deal_amount INTEGER NOT NULL,
-                exclusive_area REAL NOT NULL,
+                deal_amount INTEGER NOT NULL,  -- 만원 단위
+                exclusive_area REAL NOT NULL,   -- 전용면적 ㎡
                 floor INTEGER,
                 build_year INTEGER,
                 cancel_deal_type TEXT,
@@ -143,7 +148,7 @@ def add_to_watchlist(complex_name: str, region_code: str, region_name: str, dong
 
 
 def remove_from_watchlist(complex_id: int) -> bool:
-    """Remove a complex from watchlist by ID."""
+    """Remove a complex from the watchlist by ID."""
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM watchlist WHERE id = ?", (complex_id,))
@@ -152,42 +157,50 @@ def remove_from_watchlist(complex_id: int) -> bool:
 
 
 def insert_transactions(transactions: List[Dict[str, Any]]) -> int:
-    """Batch insert transactions and return count of inserted rows."""
+    """Batch insert transactions safely and return count of inserted rows."""
     if not transactions:
         return 0
     
     inserted_count = 0
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        for tx in transactions:
-            try:
-                cursor.execute("""
-                    INSERT OR IGNORE INTO transactions 
-                    (complex_name, region_code, region_name, dong, deal_year, deal_month, deal_day, deal_date, deal_amount, exclusive_area, floor, build_year, cancel_deal_type, is_cancel, req_gbn, rdealer_lawdnm)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    tx["complex_name"],
-                    tx.get("region_code", ""),
-                    tx.get("region_name", ""),
-                    tx.get("dong", ""),
-                    tx["deal_year"],
-                    tx["deal_month"],
-                    tx["deal_day"],
-                    tx["deal_date"],
-                    tx["deal_amount"],
-                    round(float(tx["exclusive_area"]), 2),
-                    tx.get("floor", 0),
-                    tx.get("build_year", 0),
-                    tx.get("cancel_deal_type", ""),
-                    1 if tx.get("cancel_deal_type") else 0,
-                    tx.get("req_gbn", "중개거래"),
-                    tx.get("rdealer_lawdnm", tx.get("region_name", "현지 중개사"))
-                ))
-                if cursor.rowcount > 0:
-                    inserted_count += 1
-            except Exception:
-                continue
-        conn.commit()
+    try:
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            for tx in transactions:
+                try:
+                    c_name = tx.get("complex_name", "")
+                    if not c_name:
+                        continue
+                    
+                    cursor.execute("""
+                        INSERT OR IGNORE INTO transactions 
+                        (complex_name, region_code, region_name, dong, deal_year, deal_month, deal_day, deal_date, deal_amount, exclusive_area, floor, build_year, cancel_deal_type, is_cancel, req_gbn, rdealer_lawdnm)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        c_name,
+                        tx.get("region_code", ""),
+                        tx.get("region_name", ""),
+                        tx.get("dong", ""),
+                        int(tx.get("deal_year", 2024)),
+                        int(tx.get("deal_month", 1)),
+                        int(tx.get("deal_day", 1)),
+                        tx.get("deal_date", ""),
+                        int(tx.get("deal_amount", 0)),
+                        round(float(tx.get("exclusive_area", 0)), 2),
+                        int(tx.get("floor", 0)),
+                        int(tx.get("build_year", 0)),
+                        tx.get("cancel_deal_type", ""),
+                        1 if tx.get("cancel_deal_type") else 0,
+                        tx.get("req_gbn", "중개거래"),
+                        tx.get("rdealer_lawdnm", "현지 중개사")
+                    ))
+                    if cursor.rowcount > 0:
+                        inserted_count += 1
+                except Exception:
+                    continue
+            conn.commit()
+    except Exception as e:
+        print(f"Error in insert_transactions: {e}")
+        
     return inserted_count
 
 
@@ -215,13 +228,12 @@ def get_transactions_df(complex_name: Optional[str] = None, min_area: Optional[f
         
     if not df.empty:
         df["deal_date"] = pd.to_datetime(df["deal_date"])
-        df["exclusive_area"] = df["exclusive_area"].astype(float)
-        df["deal_amount"] = df["deal_amount"].astype(int)
+        
     return df
 
 
 def add_alert(complex_name: str, alert_type: str, message: str, deal_date: str, deal_amount: int, exclusive_area: float, floor: int):
-    """Log a price alert / highlight event."""
+    """Add a price alert log."""
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -231,8 +243,8 @@ def add_alert(complex_name: str, alert_type: str, message: str, deal_date: str, 
         conn.commit()
 
 
-def get_recent_alerts(limit: int = 15) -> List[Dict[str, Any]]:
-    """Get the most recent alerts."""
+def get_recent_alerts(limit: int = 20) -> List[Dict[str, Any]]:
+    """Retrieve latest alerts."""
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
