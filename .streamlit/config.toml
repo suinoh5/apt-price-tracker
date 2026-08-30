@@ -5,3 +5,7 @@ address = "localhost"
 
 [browser]
 gatherUsageStats = false
+
+[client]
+showSidebarNavigation = false
+

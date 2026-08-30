@@ -151,19 +151,19 @@ with st.spinner("국토교통부 검증 실거래가 데이터베이스를 동�
 # SIDEBAR
 # -------------------------------------------------------------
 with st.sidebar:
-    st.image("https://img.icons8.com/fluency/96/real-estate.png", width=64)
-    st.title("🏢 아파트 시세 트래커")
-    st.caption("실거래가 추적 & AI 시세 예측 플랫폼")
-    st.divider()
-    
-    # 🧭 대시보드 메뉴 네비게이션
-    st.markdown("##### 🧭 대시보드 메뉴")
+    # 🧭 최상단 대시보드 메뉴 네비게이션
+    st.markdown("### 🧭 대시보드 메뉴")
     app_page = st.radio(
-        "이동할 페이지 선택",
+        "대시보드 메뉴",
         ["🏢 개별 아파트 단지 분석", "🌐 18개년 지역 빅데이터 & 매크로 분석"],
         index=0,
         label_visibility="collapsed"
     )
+    st.markdown("---")
+    
+    st.image("https://img.icons8.com/fluency/96/real-estate.png", width=48)
+    st.markdown("#### 🏢 아파트 시세 트래커")
+    st.caption("실거래가 추적 & AI 시세 예측 플랫폼")
     st.divider()
     
     if app_page == "🏢 개별 아파트 단지 분석":
