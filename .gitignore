@@ -20,11 +20,11 @@ secrets.toml
 .streamlit/secrets.toml
 
 # Local Databases & Private Data
-data/*.db
 data/*.sqlite3
-*.db
 *.sqlite
 *.sqlite3
+# Allow real_estate.db for Streamlit Cloud data hosting
+!data/real_estate.db
 
 # Logs & Temporary Files
 *.log
