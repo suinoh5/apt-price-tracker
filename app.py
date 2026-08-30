@@ -800,29 +800,51 @@ with tab4:
     st.divider()
     
     st.markdown("##### 📥 수집 데이터 내보내기 (Export)")
+    
+    # 내보내기용 정돈된 한글 컬럼 데이터프레임 생성
+    export_df = df_filtered.sort_values("deal_date", ascending=False).copy()
+    export_df["거래일자"] = export_df["deal_date"].dt.strftime("%Y-%m-%d")
+    export_df["단지명"] = export_df["complex_name"]
+    export_df["지역"] = export_df.get("region_name", "")
+    export_df["법정동"] = export_df.get("dong", "")
+    export_df["전용면적(㎡)"] = export_df["exclusive_area"]
+    export_df["평수(평)"] = export_df["exclusive_area"].apply(sqm_to_pyeong)
+    export_df["층수"] = export_df["floor"].apply(lambda x: f"{x}층")
+    export_df["거래금액(만원)"] = export_df["deal_amount"]
+    export_df["거래금액(한글)"] = export_df["deal_amount"].apply(format_price_krw)
+    export_df["거래유형"] = export_df.get("req_gbn", "중개거래").fillna("중개거래")
+    export_df["중개사소재지"] = export_df.get("rdealer_lawdnm", "현지 중개사").fillna("현지 중개사")
+    export_df["건축년도"] = export_df.get("build_year", "-")
+    
+    export_cols = [
+        "거래일자", "단지명", "지역", "법정동", "전용면적(㎡)", "평수(평)",
+        "층수", "거래금액(만원)", "거래금액(한글)", "거래유형", "중개사소재지", "건축년도"
+    ]
+    final_export_df = export_df[export_cols]
+    
     exp_col1, exp_col2 = st.columns(2)
     
-    # CSV Download
-    csv_data = df_filtered.to_csv(index=False, encoding="utf-8-sig")
+    # 1. CSV Download (Excel 한글 깨짐 완벽 방지: utf-8-sig 바이트 인코딩)
+    csv_bytes = final_export_df.to_csv(index=False).encode("utf-8-sig")
     with exp_col1:
         st.download_button(
             label="📄 현재 단지 실거래가 CSV 다운로드",
-            data=csv_data,
+            data=csv_bytes,
             file_name=f"{selected_complex}_실거래가_{datetime.now().strftime('%Y%m%d')}.csv",
-            mime="text/csv",
+            mime="text/csv; charset=utf-8-sig",
             use_container_width=True
         )
         
-    # Excel Download
+    # 2. Excel Download
     excel_buffer = io.BytesIO()
     with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
-        df_filtered.to_excel(writer, index=False, sheet_name="실거래가")
-    excel_data = excel_buffer.getvalue()
+        final_export_df.to_excel(writer, index=False, sheet_name="실거래가_내역")
+    excel_bytes = excel_buffer.getvalue()
     
     with exp_col2:
         st.download_button(
             label="📊 현재 단지 실거래가 Excel 다운로드",
-            data=excel_data,
+            data=excel_bytes,
             file_name=f"{selected_complex}_실거래가_{datetime.now().strftime('%Y%m%d')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True
