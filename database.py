@@ -88,21 +88,33 @@ def init_db():
         
         conn.commit()
         
-        # Seed all default complexes into watchlist (INSERT OR IGNORE)
-        for item in DEFAULT_COMPLEXES:
-            cursor.execute("""
-                INSERT OR IGNORE INTO watchlist 
-                (complex_name, region_code, region_name, dong, build_year, total_households, memo)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                item["name"], 
-                item["region_code"], 
-                item["region_name"], 
-                item["dong"], 
-                item["build_year"], 
-                item["total_households"], 
-                "기본 프리셋 단지"
-            ))
+        # Seed watchlist if empty, or update region_code
+        cursor.execute("SELECT COUNT(*) FROM watchlist")
+        if cursor.fetchone()[0] == 0:
+            for item in DEFAULT_COMPLEXES:
+                cursor.execute(
+                    """
+                    INSERT OR IGNORE INTO watchlist 
+                    (complex_name, region_code, region_name, dong, build_year, total_households, memo)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        item["name"],
+                        item["region_code"],
+                        item["region_name"],
+                        item["dong"],
+                        item["build_year"],
+                        item["total_households"],
+                        "기본 프리셋 관심 단지"
+                    )
+                )
+        else:
+            # 기존 DB에 남아있는 구형 코드(41590) 갱신
+            for item in DEFAULT_COMPLEXES:
+                cursor.execute(
+                    "UPDATE watchlist SET region_code = ? WHERE complex_name = ?",
+                    (item["region_code"], item["name"])
+                )
         conn.commit()
 
 

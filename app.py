@@ -865,17 +865,18 @@ with tab4:
             if not service_key:
                 st.error("공공데이터 API 인증키를 입력해주세요.")
             else:
-                with st.spinner("국토교통부 API로부터 실거래 데이터를 수집 중입니다..."):
+                with st.spinner(f"국토교통부 API로부터 {target_ym} 실거래 데이터를 수집 중입니다..."):
                     if complex_info:
-                        reg_cd = complex_info["region_code"]
+                        reg_cd = complex_info.get("region_code", "41595")
                         fetched = fetch_molit_api(service_key, reg_cd, target_ym)
                         if fetched:
                             count = insert_transactions(fetched)
                             detect_and_log_alerts()
-                            st.success(f"{len(fetched)}건의 데이터를 조회하여 {count}건의 신규 실거래가를 저장했습니다!")
+                            matching = [tx for tx in fetched if complex_info["complex_name"] in tx["complex_name"]]
+                            st.success(f"🎉 국토교통부 API로부터 {complex_info['region_name']} 총 {len(fetched)}건 조회 성공! ('{complex_info['complex_name']}' {len(matching)}건 포함, 신규 {count}건 저장 완료)")
                             st.rerun()
                         else:
-                            st.warning("해당 년월에 조회된 데이터가 없거나 인증키가 유효하지 않습니다.")
+                            st.warning(f"⚠️ {target_ym} 년월에 국토교통부에서 조회된 데이터가 없거나 인증키가 유효하지 않습니다.")
                             
     with col_api2:
         st.markdown("###### 2. 국토교통부 검증 실거래가 데이터 동기화")
