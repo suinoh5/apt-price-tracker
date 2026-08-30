@@ -156,14 +156,7 @@ with st.sidebar:
     
     # 1. 관심 단지 선택
     watchlist = get_watchlist()
-    if watchlist:
-        # 안화동마을주공7단지, 용인푸르지오원클러스터1단지를 1, 2번째 최상단으로 우선 정렬
-        priority = ["안화동마을주공7단지", "용인푸르지오원클러스터1단지"]
-        p_list = [p for p in priority if any(w["complex_name"] == p for w in watchlist)]
-        other_list = [w["complex_name"] for w in watchlist if w["complex_name"] not in priority]
-        complex_names = p_list + other_list
-    else:
-        complex_names = ["안화동마을주공7단지", "용인푸르지오원클러스터1단지", "잠실엘스"]
+    complex_names = [item["complex_name"] for item in watchlist] if watchlist else ["잠실엘스"]
     
     selected_complex = st.selectbox(
         "📍 분석할 아파트 단지 선택",

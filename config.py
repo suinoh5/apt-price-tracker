@@ -33,24 +33,6 @@ LAWD_CODES = {
 # Default Preset Complexes for Quick Start
 DEFAULT_COMPLEXES = [
     {
-        "name": "안화동마을주공7단지",
-        "region_name": "경기 화성시 (병점)",
-        "region_code": "41590",
-        "dong": "병점동",
-        "build_year": 2004,
-        "total_households": 742,
-        "representative_areas": [51.72, 59.92],
-    },
-    {
-        "name": "용인푸르지오원클러스터1단지",
-        "region_name": "경기 용인시 처인구",
-        "region_code": "41461",
-        "dong": "남동",
-        "build_year": 2027,
-        "total_households": 1681,
-        "representative_areas": [59.98, 84.95, 130.12],
-    },
-    {
         "name": "잠실엘스",
         "region_name": "서울 송파구",
         "region_code": "11710",
@@ -103,6 +85,24 @@ DEFAULT_COMPLEXES = [
         "build_year": 2016,
         "total_households": 1612,
         "representative_areas": [59.95, 84.97, 112.96],
+    },
+    {
+        "name": "안화동마을주공7단지",
+        "region_name": "경기 화성시 (병점)",
+        "region_code": "41590",
+        "dong": "병점동",
+        "build_year": 2004,
+        "total_households": 742,
+        "representative_areas": [51.72, 59.92],
+    },
+    {
+        "name": "용인푸르지오원클러스터1단지",
+        "region_name": "경기 용인시 처인구",
+        "region_code": "41461",
+        "dong": "남동",
+        "build_year": 2027,
+        "total_households": 1681,
+        "representative_areas": [59.98, 84.95, 130.12],
     }
 ]
 
