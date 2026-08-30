@@ -138,10 +138,10 @@ from real_data_loader import load_real_data_into_db
 # Initialize DB
 init_db()
 
-# Auto-seed verified real transactions if database is empty
-with st.spinner("국토교통부 검증 실거래가 데이터베이스를 로드 중입니다..."):
+# Auto-seed verified real transactions
+with st.spinner("국토교통부 검증 실거래가 데이터베이스를 동기화 중입니다..."):
     sample_check = get_transactions_df()
-    if sample_check.empty:
+    if len(sample_check) < 130:
         load_real_data_into_db()
 
 
