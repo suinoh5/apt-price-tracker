@@ -19,18 +19,9 @@ from database import (
     get_recent_alerts
 )
 from collector import generate_realistic_historical_data, fetch_molit_api, detect_and_log_alerts
-from analyzer import (
-    calculate_complex_metrics, 
-    add_moving_averages, 
-    calculate_rsi, 
-    calculate_supply_demand_metrics,
-    get_regional_macro_timeseries,
-    get_regional_head_to_head,
-    get_area_mix_distribution,
-    get_dong_price_leaderboard,
-    get_complex_ath_recovery_leaderboard
-)
+from analyzer import calculate_complex_metrics, add_moving_averages, calculate_rsi, calculate_supply_demand_metrics
 from predictor import predict_future_prices, calculate_investment_score
+from macro_page import render_macro_page
 
 
 # Page Config
@@ -156,6 +147,7 @@ with st.spinner("국토교통부 검증 실거래가 데이터베이스를 동�
 
 
 # -------------------------------------------------------------
+# -------------------------------------------------------------
 # SIDEBAR
 # -------------------------------------------------------------
 with st.sidebar:
@@ -164,58 +156,69 @@ with st.sidebar:
     st.caption("실거래가 추적 & AI 시세 예측 플랫폼")
     st.divider()
     
-    # 1. 관심 단지 선택
-    watchlist = get_watchlist()
-    complex_names = [item["complex_name"] for item in watchlist] if watchlist else ["잠실엘스"]
-    
-    selected_complex = st.selectbox(
-        "📍 분석할 아파트 단지 선택",
-        options=complex_names,
-        index=0 if complex_names else None
+    # 🧭 대시보드 메뉴 네비게이션
+    st.markdown("##### 🧭 대시보드 메뉴")
+    app_page = st.radio(
+        "이동할 페이지 선택",
+        ["🏢 개별 아파트 단지 분석", "🌐 18개년 지역 빅데이터 & 매크로 분석"],
+        index=0,
+        label_visibility="collapsed"
     )
-    
-    # 선택된 단지의 거래 데이터 로드하여 가능한 평형 목록 추출
-    complex_tx_df = get_transactions_df(complex_name=selected_complex)
-    
-    if not complex_tx_df.empty:
-        available_areas = sorted(complex_tx_df["exclusive_area"].unique())
-        area_labels = [f"{a:.2f}㎡ ({sqm_to_pyeong(a):.0f}평)" for a in available_areas]
-        area_mapping = dict(zip(area_labels, available_areas))
-        
-        selected_area_label = st.selectbox(
-            "📐 전용면적(평형) 선택",
-            options=area_labels,
-            index=0 if len(area_labels) <= 1 else 1  # 국민평형(84) 디폴트 선호
-        )
-        selected_area = area_mapping[selected_area_label]
-    else:
-        selected_area = None
-        st.warning("선택한 단지의 거래 데이터가 없습니다.")
-
     st.divider()
-
-    # 2. 신규 관심 단지 등록
-    with st.expander("➕ 새 관심단지 등록"):
-        with st.form("add_complex_form"):
-            new_name = st.text_input("단지명 (예: 래미안대치팰리스)")
-            new_region_name = st.selectbox("지역 선택", list(LAWD_CODES.keys()))
-            new_dong = st.text_input("법정동 (예: 대치동)")
-            new_build_year = st.number_input("준공년도", min_value=1970, max_value=2030, value=2015)
-            new_households = st.number_input("총 세대수", min_value=10, max_value=20000, value=1500)
-            new_memo = st.text_input("메모", value="관심 단지")
+    
+    if app_page == "🏢 개별 아파트 단지 분석":
+        # 1. 관심 단지 선택
+        watchlist = get_watchlist()
+        complex_names = [item["complex_name"] for item in watchlist] if watchlist else ["잠실엘스"]
+        
+        selected_complex = st.selectbox(
+            "📍 분석할 아파트 단지 선택",
+            options=complex_names,
+            index=0 if complex_names else None
+        )
+        
+        # 선택된 단지의 거래 데이터 로드하여 가능한 평형 목록 추출
+        complex_tx_df = get_transactions_df(complex_name=selected_complex)
+        
+        if not complex_tx_df.empty:
+            available_areas = sorted(complex_tx_df["exclusive_area"].unique())
+            area_labels = [f"{a:.2f}㎡ ({sqm_to_pyeong(a):.0f}평)" for a in available_areas]
+            area_mapping = dict(zip(area_labels, available_areas))
             
-            submit_btn = st.form_submit_button("관심 단지 추가", use_container_width=True)
-            if submit_btn:
-                if new_name.strip():
-                    reg_code = LAWD_CODES[new_region_name]
-                    ok = add_to_watchlist(new_name, reg_code, new_region_name, new_dong, new_build_year, new_households, new_memo)
-                    if ok:
-                        st.success(f"'{new_name}' 단지가 등록되었습니다!")
-                        st.rerun()
+            selected_area_label = st.selectbox(
+                "📐 전용면적(평형) 선택",
+                options=area_labels,
+                index=0 if len(area_labels) <= 1 else 1  # 국민평형(84) 디폴트 선호
+            )
+            selected_area = area_mapping[selected_area_label]
+        else:
+            selected_area = None
+            st.warning("선택한 단지의 거래 데이터가 없습니다.")
+
+        st.divider()
+
+        # 2. 신규 관심 단지 등록
+        with st.expander("➕ 새 관심단지 등록"):
+            with st.form("add_complex_form"):
+                new_name = st.text_input("단지명 (예: 래미안대치팰리스)")
+                new_region_name = st.selectbox("지역 선택", list(LAWD_CODES.keys()))
+                new_dong = st.text_input("법정동 (예: 대치동)")
+                new_build_year = st.number_input("준공년도", min_value=1970, max_value=2030, value=2015)
+                new_households = st.number_input("총 세대수", min_value=10, max_value=20000, value=1500)
+                new_memo = st.text_input("메모", value="관심 단지")
+                
+                submit_btn = st.form_submit_button("관심 단지 추가", use_container_width=True)
+                if submit_btn:
+                    if new_name.strip():
+                        reg_code = LAWD_CODES[new_region_name]
+                        ok = add_to_watchlist(new_name, reg_code, new_region_name, new_dong, new_build_year, new_households, new_memo)
+                        if ok:
+                            st.success(f"'{new_name}' 단지가 등록되었습니다!")
+                            st.rerun()
+                        else:
+                            st.error("이미 등록된 단지명이거나 오류가 발생했습니다.")
                     else:
-                        st.error("이미 등록된 단지명이거나 오류가 발생했습니다.")
-                else:
-                    st.warning("단지명을 입력해주세요.")
+                        st.warning("단지명을 입력해주세요.")
 
     st.caption("© 2026 Apt Price Tracker. All Rights Reserved.")
 
@@ -223,6 +226,10 @@ with st.sidebar:
 # -------------------------------------------------------------
 # MAIN VIEW
 # -------------------------------------------------------------
+if app_page == "🌐 18개년 지역 빅데이터 & 매크로 분석":
+    render_macro_page()
+    st.stop()
+
 if not selected_complex:
     st.info("사이드바에서 분석할 아파트 단지를 선택해주세요.")
     st.stop()
@@ -550,507 +557,265 @@ with tab2:
     st.markdown("##### 🤖 전문가급 AI 시세 예측 & 종합 투자 매력도 분석")
     st.caption("부동산 퀀트 지표(RSI, 수급 회전율), 4대 팩터 종합 매력도 스코어링 및 3대 시나리오(Bull/Base/Bear) 시뮬레이션 모델")
     
-    if len(df_filtered) < 3:
-        st.info("신뢰도 높은 AI 시세 예측 및 매매 분석을 위해 최소 3건 이상의 실거래 데이터가 필요합니다.")
+    if df_filtered.empty or len(df_filtered) < 5:
+        st.warning("정밀 예측을 위해 최소 5건 이상의 실거래 데이터가 필요합니다.")
     else:
-        # 단지 세대수
-        households = complex_info.get("total_households", 1000) if complex_info else 1000
+        total_hh = complex_info.get("total_households", 1000) if complex_info else 1000
         
-        # 1. AI 지표 계산
-        with st.spinner("AI 투자 매력도 및 3대 시나리오 전망 모델을 연산 중입니다..."):
-            pred_res = predict_future_prices(df_filtered, forecast_days=365)
-            rsi_data = calculate_rsi(df_filtered)
-            sn_data = calculate_supply_demand_metrics(df_filtered, total_households=households)
+        # 1. 지표 계산
+        rsi_data = calculate_rsi(df_filtered)
+        supply_demand = calculate_supply_demand_metrics(df_filtered, total_households=total_hh)
+        pred_res = predict_future_prices(df_filtered, forecast_days=365)
+        
+        if pred_res["success"]:
+            score_data = calculate_investment_score(
+                metrics=metrics,
+                rsi_data=rsi_data,
+                supply_demand=supply_demand,
+                momentum_pct=pred_res["recent_momentum_pct"]
+            )
             
-            if pred_res.get("success", False):
-                inv_score = calculate_investment_score(
-                    metrics=metrics,
-                    rsi_data=rsi_data,
-                    supply_demand=sn_data,
-                    momentum_pct=pred_res.get("recent_momentum_pct", 0.0)
-                )
-            else:
-                inv_score = None
-            
-        if pred_res.get("success", False) and inv_score:
             # =========================================================
-            # 🏆 SECTION 1: 종합 AI 투자 매력도 & 부동산 RSI 계기판
+            # 🏆 SECTION 1: 종합 AI 투자 매력도 스코어 & RSI 계기판
             # =========================================================
-            c_score1, c_score2 = st.columns([1.2, 1])
+            sec1_col1, sec1_col2 = st.columns([1.1, 0.9])
             
-            with c_score1:
+            with sec1_col1:
                 st.markdown(f"""
-                <div class="score-card">
-                    <div style="font-size: 0.95rem; font-weight: 700; color: #4a5568; margin-bottom: 6px;">
-                        🏆 종합 AI 부동산 투자 매력도 점수
+                <div style="background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%); border-radius: 12px; padding: 20px 22px; color: white; margin-bottom: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div>
+                            <span style="font-size: 0.82rem; background: rgba(255,255,255,0.15); padding: 3px 8px; border-radius: 4px; font-weight: 600;">AI 종합 투자 매력도</span>
+                            <h2 style="font-size: 2.2rem; font-weight: 800; margin: 8px 0 2px 0; color: #f7fafc;">
+                                {score_data['total_score']} <span style="font-size: 1.1rem; font-weight: 500; color: #a0aec0;">/ 100점</span>
+                            </h2>
+                            <div style="font-size: 0.95rem; font-weight: 700; color: {score_data['color']}; margin-bottom: 6px;">
+                                {score_data['grade']}
+                            </div>
+                        </div>
+                        <div style="text-align: right; font-size: 2.4rem;">
+                            🏆
+                        </div>
                     </div>
-                    <div style="display: flex; align-items: baseline; justify-content: center; gap: 8px;">
-                        <span class="score-number">{inv_score['total_score']}</span>
-                        <span style="font-size: 1.3rem; color: #718096; font-weight: 600;">/ 100점</span>
+                    <div style="font-size: 0.84rem; color: #e2e8f0; line-height: 1.5; margin-top: 6px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 8px;">
+                        {score_data['verdict']}
                     </div>
-                    <div style="margin-top: 4px;">
-                        <span class="score-grade" style="color: {inv_score['color']};">
-                            {inv_score['grade']} ({inv_score['action']})
-                        </span>
-                    </div>
-                    <div class="score-desc">
-                        {inv_score['desc']}
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; font-size: 0.78rem; color: #cbd5e0;">
+                        <div>• 모멘텀: <strong>{score_data['sub_scores']['모멘텀 (추세 강도)']}점</strong></div>
+                        <div>• 저평가 메리트: <strong>{score_data['sub_scores']['가격 메리트 (저평가도)']}점</strong></div>
+                        <div>• 수급 에너지: <strong>{score_data['sub_scores']['거래량 에너지 (수급)']}점</strong></div>
+                        <div>• 가격 안정성: <strong>{score_data['sub_scores']['가격 변동 안정성']}점</strong></div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # 4대 팩터별 세부 레이더/프로그레스 바
-                st.write("")
-                st.markdown("<div style='font-size:0.85rem; font-weight:700; color:#4a5568; margin-bottom:4px;'>📊 4대 팩터별 세부 점수</div>", unsafe_allow_html=True)
-                for f_name, f_val in inv_score["factors"].items():
-                    f_col1, f_col2 = st.columns([2, 1])
-                    with f_col1:
-                        st.progress(f_val / 100, text=f_name)
-                    with f_col2:
-                        st.markdown(f"<div style='text-align:right; font-weight:700; color:#2b6cb0; font-size:0.9rem;'>{f_val}점</div>", unsafe_allow_html=True)
-
-            with c_score2:
+            with sec1_col2:
                 st.markdown(f"""
-                <div class="rsi-gauge-card">
-                    <div style="font-size: 0.95rem; font-weight: 700; color: #4a5568; margin-bottom: 6px;">
-                        🧭 부동산 시장 RSI (상대강도지수)
+                <div style="background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px 22px; margin-bottom: 15px; box-shadow: 0 2px 6px rgba(0,0,0,0.03);">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div>
+                            <span style="font-size: 0.82rem; color: #718096; font-weight: 600;">부동산 RSI 상대강도지수</span>
+                            <h2 style="font-size: 2.2rem; font-weight: 800; margin: 8px 0 2px 0; color: {rsi_data['color']};">
+                                {rsi_data['rsi']} <span style="font-size: 1.0rem; font-weight: 500; color: #718096;">/ 100</span>
+                            </h2>
+                            <div style="font-size: 0.95rem; font-weight: 700; color: {rsi_data['color']}; margin-bottom: 6px;">
+                                {rsi_data['status']}
+                            </div>
+                        </div>
+                        <div style="text-align: right; font-size: 2.2rem;">
+                            🧭
+                        </div>
                     </div>
-                    <div class="rsi-value" style="color: {rsi_data['color']};">
-                        {rsi_data['rsi']}
-                    </div>
-                    <div class="rsi-status" style="color: {rsi_data['color']};">
-                        {rsi_data['status']}
-                    </div>
-                    <div style="font-size: 0.85rem; color: #718096; line-height: 1.4; margin-top: 6px;">
+                    <div style="font-size: 0.84rem; color: #4a5568; line-height: 1.5; margin-top: 6px; border-top: 1px solid #edf2f7; padding-top: 8px;">
                         {rsi_data['desc']}
                     </div>
+                    <div style="margin-top: 10px; font-size: 0.76rem; color: #718096;">
+                        기준: 70 이상(과열 주의) | 35~70(적정 균형) | 35 이하(바닥권 매수)
+                    </div>
                 </div>
                 """, unsafe_allow_html=True)
-                
-                # 게이지 바 시각화
-                st.write("")
-                st.progress(rsi_data["rsi"] / 100, text="RSI 과열/침체 계기판 (0: 극심한 침체 / 100: 단기 과열)")
-                st.caption("• 70 이상: 단기 과열 (추격 매수 유의) | • 30 이하: 과매도 저평가 (저점 매수 기회)")
 
             # =========================================================
-            # 🌊 SECTION 2: 거래 회전율 & 실거래 수급 에너지 분석
+            # 🌊 SECTION 2: 거래 회전율 & 수급 진단 지표 카드 (4-Grid)
             # =========================================================
-            st.markdown("---")
-            st.markdown("##### 🌊 거래 회전율 & 실거래 수급 에너지 분석")
+            st.markdown("###### 🌊 거래량 & 수급 에너지 진단")
+            sq1, sq2, sq3, sq4 = st.columns(4)
             
-            c_sd1, c_sd2, c_sd3, c_sd4 = st.columns(4)
-            with c_sd1:
+            with sq1:
                 st.markdown(f"""
                 <div class="metric-card">
                     <div class="metric-title">최근 6개월 거래 회전율</div>
-                    <div class="metric-value">{sn_data.get('turnover_rate_str', '0%')}</div>
-                    <div class="metric-sub">
-                        <span>총 {households:,}세대 중 {sn_data.get('tx_count_6m', 0)}건 손바뀜</span>
-                    </div>
+                    <div class="metric-value">{supply_demand['turnover_rate_str']}</div>
+                    <div class="metric-sub">총 세대수 중 {supply_demand['tx_count_6m']}건 체결</div>
                 </div>
                 """, unsafe_allow_html=True)
                 
-            with c_sd2:
-                adv_ratio = sn_data.get('advance_ratio', 50)
+            with sq2:
+                adv_color = "#e53e3e" if supply_demand['advance_ratio'] >= 50 else "#3182ce"
                 st.markdown(f"""
                 <div class="metric-card">
-                    <div class="metric-title">상승 거래 비중</div>
-                    <div class="metric-value" style="color: {'#e53e3e' if adv_ratio >= 60 else '#2d3748'};">{adv_ratio}%</div>
-                    <div class="metric-sub">
-                        <span>직전가 대비 상승 체결 비율</span>
-                    </div>
+                    <div class="metric-title">상승 거래 체결 비중</div>
+                    <div class="metric-value" style="color: {adv_color};">{supply_demand['advance_ratio']}%</div>
+                    <div class="metric-sub">상승 {supply_demand['up_count']}건 / 하락 {supply_demand['down_count']}건</div>
                 </div>
                 """, unsafe_allow_html=True)
                 
-            with c_sd3:
-                dec_ratio = sn_data.get('decline_ratio', 50)
+            with sq3:
                 st.markdown(f"""
                 <div class="metric-card">
-                    <div class="metric-title">하락/조정 거래 비중</div>
-                    <div class="metric-value" style="color: {'#3182ce' if dec_ratio >= 60 else '#2d3748'};">{dec_ratio}%</div>
-                    <div class="metric-sub">
-                        <span>직전가 대비 하락 체결 비율</span>
-                    </div>
+                    <div class="metric-title">평균 거래 체결 주기</div>
+                    <div class="metric-value">{supply_demand['avg_interval_days']}일</div>
+                    <div class="metric-sub">약 {supply_demand['avg_interval_days']:.0f}일마다 1건 발생</div>
                 </div>
                 """, unsafe_allow_html=True)
                 
-            with c_sd4:
+            with sq4:
                 st.markdown(f"""
                 <div class="metric-card">
-                    <div class="metric-title">평균 거래 발생 주기</div>
-                    <div class="metric-value">{sn_data.get('avg_interval_days', 30)}일</div>
-                    <div class="metric-sub">
-                        <span>신규 계약 체결 평균 소요 시간</span>
-                    </div>
+                    <div class="metric-title">최근 6개월 가격 모멘텀</div>
+                    <div class="metric-value" style="color: {pred_res['momentum_color']};">{pred_res['recent_momentum_pct']:+0.2f}%</div>
+                    <div class="metric-sub">{pred_res['momentum_status'].split(' ')[1]}</div>
                 </div>
                 """, unsafe_allow_html=True)
+            
+            st.divider()
 
             # =========================================================
-            # 🎯 SECTION 3: 3대 시나리오 미래 전망 차트 & 예측 비교표
+            # 🎯 SECTION 3: 3대 시나리오 (Bull / Base / Bear) 예측 차트 & 비교 표
             # =========================================================
-            st.markdown("---")
-            st.markdown("##### 🎯 3대 시나리오(Bull / Base / Bear) 기반 시세 예측 전망")
-            st.caption("과거 3개년 시계열 가중 추세 모델에 거시 유동성 및 가격 저평가 밴드를 복합 적용한 시뮬레이션입니다.")
+            st.markdown("###### 🎯 AI 3대 시나리오 (상승 🚀 / 기본 🎯 / 보수 🛡️) 시세 전망")
             
             future_df = pred_res["future_df"]
             hist_fit_df = pred_res["historical_fit_df"]
             
-            fig_sc = go.Figure()
+            fig_pred = go.Figure()
             
-            # 1. 과거 실거래 체결가 포인트
-            fig_sc.add_trace(go.Scatter(
-                x=df_filtered["deal_date"], y=df_filtered["deal_amount"] / 10000,
-                mode="markers", name="실제 실거래가",
-                marker=dict(size=7, color="#2b6cb0", opacity=0.8),
+            # 1. 과거 실거래가 포인트
+            fig_pred.add_trace(go.Scatter(
+                x=df_filtered["deal_date"],
+                y=df_filtered["deal_amount"] / 10000,
+                mode="markers",
+                name="실제 실거래가",
+                marker=dict(color="#4a5568", size=7, opacity=0.75),
                 hovertemplate="<b>일자</b>: %{x|%Y-%m-%d}<br><b>실거래가</b>: %{y:.2f}억원<extra></extra>"
             ))
             
             # 2. 과거 추세선
-            fig_sc.add_trace(go.Scatter(
-                x=hist_fit_df["deal_date"], y=hist_fit_df["fitted_price"] / 10000,
-                mode="lines", name="과거 추세선",
+            fig_pred.add_trace(go.Scatter(
+                x=hist_fit_df["deal_date"],
+                y=hist_fit_df["fitted_price"] / 10000,
+                mode="lines",
+                name="과거 추세선",
                 line=dict(color="#a0aec0", width=1.5, dash="dot"),
                 hoverinfo="skip"
             ))
             
-            # 3. 🚀 상승 시나리오 (Bull)
-            fig_sc.add_trace(go.Scatter(
-                x=future_df["deal_date"], y=future_df["bull_price"] / 10000,
-                mode="lines", name="🚀 상승 시나리오 (Bull)",
-                line=dict(color="#e53e3e", width=2.5, dash="dash"),
-                hovertemplate="<b>일자</b>: %{x|%Y-%m-%d}<br><b>Bull 예상가</b>: %{y:.2f}억원<extra></extra>"
-            ))
-            
-            # 4. 🎯 기본 시나리오 (Base)
-            fig_sc.add_trace(go.Scatter(
-                x=future_df["deal_date"], y=future_df["base_price"] / 10000,
-                mode="lines", name="🎯 기본 시나리오 (Base)",
-                line=dict(color="#38a169", width=3),
-                hovertemplate="<b>일자</b>: %{x|%Y-%m-%d}<br><b>Base 예상가</b>: %{y:.2f}억원<extra></extra>"
-            ))
-            
-            # 5. 🛡️ 보수 시나리오 (Bear)
-            fig_sc.add_trace(go.Scatter(
-                x=future_df["deal_date"], y=future_df["bear_price"] / 10000,
-                mode="lines", name="🛡️ 보수 시나리오 (Bear)",
-                line=dict(color="#718096", width=2, dash="dot"),
-                hovertemplate="<b>일자</b>: %{x|%Y-%m-%d}<br><b>Bear 예상가</b>: %{y:.2f}억원<extra></extra>"
-            ))
-            
-            # 신뢰구간 음영
-            fig_sc.add_trace(go.Scatter(
-                x=pd.concat([future_df["deal_date"], future_df["deal_date"].iloc[::-1]]),
-                y=pd.concat([future_df["bull_price"], future_df["bear_price"].iloc[::-1]]) / 10000,
-                fill="toself",
-                fillcolor="rgba(56, 161, 105, 0.08)",
-                line=dict(color="rgba(255,255,255,0)"),
-                hoverinfo="skip",
-                showlegend=False,
-                name="예측 밴드"
-            ))
-            
-            fig_sc.update_layout(
-                height=420,
-                margin=dict(l=15, r=15, t=25, b=15),
-                hovermode="x unified",
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)"
-            )
-            fig_sc.update_xaxes(showgrid=True, gridcolor="#edf2f7")
-            fig_sc.update_yaxes(showgrid=True, gridcolor="#edf2f7")
-            
-            st.plotly_chart(fig_sc, use_container_width=True, config={"scrollZoom": False, "displayModeBar": False})
-
-
-# -------------------------------------------------------------
-# TAB 3: 🌐 18개년 지역 빅데이터 & 매크로 분석
-# -------------------------------------------------------------
-with tab3:
-    st.markdown("##### 🌐 경기 남부 핵심 벨트 (화성시 병점 · 용인 처인구) 18개년(2006~2024) 실거래 빅데이터 분석")
-    st.caption("국토교통부 224개월 전수 실거래 데이터(85,000+건) 기반 매크로 시세 사이클, 반도체 벨트 맞비교, 평형대 믹스 및 동별 시세 지도")
-    
-    # 컨트롤 바
-    c_m_reg, c_m_year = st.columns([1.5, 2.5])
-    with c_m_reg:
-        macro_reg_opt = st.selectbox(
-            "분석 대상 권역 선택",
-            options=["통합 (화성시 병점 + 용인 처인구)", "경기 화성시 (병점·동부 권역)", "경기 용인시 처인구"],
-            index=0
-        )
-        reg_code_map = {
-            "통합 (화성시 병점 + 용인 처인구)": None,
-            "경기 화성시 (병점·동부 권역)": "41595",
-            "경기 용인시 처인구": "41461"
-        }
-        sel_macro_reg_code = reg_code_map[macro_reg_opt]
-        
-    with c_m_year:
-        year_range = st.slider(
-            "시계열 분석 기간 범위 (년도)",
-            min_value=2006,
-            max_value=2026,
-            value=(2006, 2026),
-            step=1
-        )
-        
-    # =========================================================
-    # 📊 SECTION 1: 18개년 매크로 시세 사이클 & 거래량 타임라인 (Dual-Axis)
-    # =========================================================
-    st.markdown("---")
-    st.markdown("##### 📊 1. 18개년 평당 시세 & 거래량 매크로 사이클 (거시 경제 이벤트 맵)")
-    
-    macro_df = get_regional_macro_timeseries(sel_macro_reg_code)
-    if not macro_df.empty:
-        macro_filtered = macro_df[
-            (macro_df["deal_year"] >= year_range[0]) & 
-            (macro_df["deal_year"] <= year_range[1])
-        ].copy()
-        
-        fig_macro = make_subplots(
-            rows=2, cols=1,
-            shared_xaxes=True,
-            vertical_spacing=0.08,
-            subplot_titles=("월별 평균 평당가 (만원 / 3.3㎡)", "월별 총 거래량 (건)"),
-            row_heights=[0.7, 0.3]
-        )
-        
-        # 1. 평당가 Line & Fill
-        fig_macro.add_trace(
-            go.Scatter(
-                x=macro_filtered["deal_ym"],
-                y=macro_filtered["avg_pyeong_price"],
+            # 3. 🚀 상승 시나리오 (Bull Case)
+            fig_pred.add_trace(go.Scatter(
+                x=future_df["deal_date"],
+                y=future_df["bull_price"] / 10000,
                 mode="lines",
-                name="평균 평당가",
-                line=dict(color="#2b6cb0", width=2.5),
-                fill="tozeroy",
-                fillcolor="rgba(43, 108, 176, 0.08)",
-                hovertemplate="<b>%{x}</b><br>평균 평당가: <b>%{y:,.1f}만원/평</b><extra></extra>"
-            ),
-            row=1, col=1
-        )
-        
-        # 2. 거래량 Bar
-        fig_macro.add_trace(
-            go.Bar(
-                x=macro_filtered["deal_ym"],
-                y=macro_filtered["trade_count"],
-                name="월별 거래량",
-                marker_color="#a0aec0",
-                opacity=0.7,
-                hovertemplate="<b>%{x}</b><br>거래량: <b>%{y:,}건</b><extra></extra>"
-            ),
-            row=2, col=1
-        )
-        
-        # 주요 거시 경제 이벤트 음영 구간 하이라이트
-        events = [
-            {"x0": "2008-09", "x1": "2009-06", "label": "글로벌 금융위기", "color": "rgba(229, 62, 62, 0.12)"},
-            {"x0": "2013-01", "x1": "2013-12", "label": "취득세 감면 바닥기", "color": "rgba(49, 151, 149, 0.12)"},
-            {"x0": "2017-06", "x1": "2021-10", "label": "대세상승 유동성장", "color": "rgba(221, 107, 32, 0.12)"},
-            {"x0": "2022-01", "x1": "2023-01", "label": "금리인상 조정기", "color": "rgba(113, 128, 150, 0.15)"},
-            {"x0": "2024-01", "x1": "2026-08", "label": "반도체벨트 신고가장", "color": "rgba(56, 161, 105, 0.12)"}
-        ]
-        for ev in events:
-            fig_macro.add_vrect(
-                x0=ev["x0"], x1=ev["x1"],
-                fillcolor=ev["color"], layer="below", line_width=0,
-                annotation_text=ev["label"], annotation_position="top left",
-                annotation=dict(font_size=10, font_color="#4a5568")
-            )
-            
-        fig_macro.update_layout(
-            height=460,
-            margin=dict(l=15, r=15, t=35, b=15),
-            hovermode="x unified",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)"
-        )
-        fig_macro.update_xaxes(showgrid=True, gridcolor="#edf2f7")
-        fig_macro.update_yaxes(showgrid=True, gridcolor="#edf2f7")
-        
-        st.plotly_chart(fig_macro, use_container_width=True, config={"scrollZoom": False, "displayModeBar": False})
-    else:
-        st.info("선택된 조건의 매크로 데이터가 없습니다.")
-
-    # =========================================================
-    # ⚔️ SECTION 2: 경기 남부 반도체 벨트 맞비교: 화성시 vs 용인 처인구
-    # =========================================================
-    st.markdown("---")
-    st.markdown("##### ⚔️ 2. 경기 남부 반도체 벨트 맞비교: 화성시 vs 용인 처인구")
-    
-    h2h_data = get_regional_head_to_head()
-    if h2h_data:
-        c_h1, c_h2, c_h3, c_h4 = st.columns(4)
-        with c_h1:
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-title">화성시 (병점) 18개년 상승률</div>
-                <div class="metric-value">+{h2h_data['hw_growth']}%</div>
-                <div class="metric-sub">
-                    <span>평당 {h2h_data['hw_start_pyeong']:,}만 ➔ {h2h_data['hw_end_pyeong']:,}만원</span>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-        with c_h2:
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-title">용인 처인구 18개년 상승률</div>
-                <div class="metric-value">+{h2h_data['yi_growth']}%</div>
-                <div class="metric-sub">
-                    <span>평당 {h2h_data['yi_start_pyeong']:,}만 ➔ {h2h_data['yi_end_pyeong']:,}만원</span>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-        with c_h3:
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-title">총 누적 실거래 확보량</div>
-                <div class="metric-value">{h2h_data['hw_total_trades'] + h2h_data['yi_total_trades']:,}건</div>
-                <div class="metric-sub">
-                    <span>화성 {h2h_data['hw_total_trades']:,}건 / 처인 {h2h_data['yi_total_trades']:,}건</span>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-        with c_h4:
-            spread = h2h_data['hw_end_pyeong'] - h2h_data['yi_end_pyeong']
-            spread_sign = "+" if spread > 0 else ""
-            st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-title">현재 평당 시세 격차 (Gap)</div>
-                <div class="metric-value">{spread_sign}{spread:,}만원</div>
-                <div class="metric-sub">
-                    <span>화성시 평당가 우위 스프레드</span>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-        # 연도별 비교 추이 차트
-        cmp_df = h2h_data["yearly_comparison_df"]
-        fig_cmp = go.Figure()
-        fig_cmp.add_trace(go.Scatter(
-            x=cmp_df["deal_year"], y=cmp_df["hw_pyeong"],
-            mode="lines+markers", name="화성시 (병점)",
-            line=dict(color="#3182ce", width=3),
-            marker=dict(size=6)
-        ))
-        fig_cmp.add_trace(go.Scatter(
-            x=cmp_df["deal_year"], y=cmp_df["yi_pyeong"],
-            mode="lines+markers", name="용인시 처인구",
-            line=dict(color="#dd6b20", width=3),
-            marker=dict(size=6)
-        ))
-        fig_cmp.update_layout(
-            title="화성시 vs 용인 처인구 연도별 평균 평당가 추이 비교 (만원 / 평)",
-            height=350,
-            margin=dict(l=15, r=15, t=40, b=15),
-            hovermode="x unified",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)"
-        )
-        fig_cmp.update_xaxes(showgrid=True, gridcolor="#edf2f7", dtick=1)
-        fig_cmp.update_yaxes(showgrid=True, gridcolor="#edf2f7")
-        st.plotly_chart(fig_cmp, use_container_width=True, config={"scrollZoom": False, "displayModeBar": False})
-
-    # =========================================================
-    # 🧩 SECTION 3: 18개년 평형대별 거래 비중 변화 (Area Mix)
-    # =========================================================
-    st.markdown("---")
-    st.markdown("##### 🧩 3. 18개년 시대별 평형대 거래 비중 변화 (Area Mix)")
-    st.caption("소형(전용 59㎡ 이하), 국민평형(59~85㎡), 대형(85㎡ 초과)의 연도별 거래 쏠림 현상 추이")
-    
-    area_mix_df = get_area_mix_distribution(sel_macro_reg_code)
-    if not area_mix_df.empty:
-        fig_area = go.Figure()
-        color_map = {
-            "소형 (59㎡ 이하)": "#4299e1",
-            "중형 (59~85㎡ 국평)": "#38a169",
-            "대형 (85㎡ 초과)": "#805ad5"
-        }
-        for cat in ["소형 (59㎡ 이하)", "중형 (59~85㎡ 국평)", "대형 (85㎡ 초과)"]:
-            sub = area_mix_df[area_mix_df["area_category"] == cat]
-            if not sub.empty:
-                fig_area.add_trace(go.Bar(
-                    x=sub["deal_year"],
-                    y=sub["share_pct"],
-                    name=cat,
-                    marker_color=color_map.get(cat, "#718096"),
-                    hovertemplate="<b>%{x}년 " + cat + "</b><br>거래 비중: <b>%{y:.1f}%</b><extra></extra>"
-                ))
-        fig_area.update_layout(
-            barmode="stack",
-            height=340,
-            margin=dict(l=15, r=15, t=20, b=15),
-            hovermode="x unified",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)"
-        )
-        fig_area.update_xaxes(showgrid=True, gridcolor="#edf2f7", dtick=1)
-        fig_area.update_yaxes(showgrid=True, gridcolor="#edf2f7", range=[0, 100], ticksuffix="%")
-        st.plotly_chart(fig_area, use_container_width=True, config={"scrollZoom": False, "displayModeBar": False})
-
-    # =========================================================
-    # 🏆 SECTION 4: 읍·면·동별 시세 랭킹 & 2021년 역대 최고가(ATH) 회복률 리더보드
-    # =========================================================
-    st.markdown("---")
-    st.markdown("##### 🏆 4. 읍·면·동별 평당 시세 랭킹 & 역대 최고가(ATH) 회복률 리더보드")
-    
-    col_rank1, col_rank2 = st.columns(2)
-    with col_rank1:
-        st.markdown("###### 📍 법정동별 평균 평당가 순위 TOP 12")
-        dong_df = get_dong_price_leaderboard(sel_macro_reg_code, top_n=12)
-        if not dong_df.empty:
-            fig_dong = go.Figure(go.Bar(
-                x=dong_df["avg_pyeong_price"],
-                y=dong_df["dong"] + " (" + dong_df["region_name"] + ")",
-                orientation="h",
-                marker_color="#3182ce",
-                text=[f"{v:,.0f}만" for v in dong_df["avg_pyeong_price"]],
-                textposition="auto",
-                hovertemplate="<b>%{y}</b><br>평당가: %{x:,.1f}만원/평<extra></extra>"
+                name="🚀 상승 시나리오 (Bull)",
+                line=dict(color="#38a169", width=2.5, dash="dash"),
+                hovertemplate="<b>상승 시나리오</b>: %{y:.2f}억원<extra></extra>"
             ))
-            fig_dong.update_layout(
-                height=420,
-                margin=dict(l=15, r=15, t=10, b=15),
-                yaxis=dict(autorange="reversed"),
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)"
+            
+            # 4. 🎯 기본 시나리오 (Base Case)
+            fig_pred.add_trace(go.Scatter(
+                x=future_df["deal_date"],
+                y=future_df["base_price"] / 10000,
+                mode="lines",
+                name="🎯 기본 시나리오 (Base)",
+                line=dict(color="#e53e3e", width=3.0),
+                hovertemplate="<b>기본 시나리오</b>: %{y:.2f}억원<extra></extra>"
+            ))
+            
+            # 5. 🛡️ 보수 시나리오 (Bear Case)
+            fig_pred.add_trace(go.Scatter(
+                x=future_df["deal_date"],
+                y=future_df["bear_price"] / 10000,
+                mode="lines",
+                name="🛡️ 보수 시나리오 (Bear)",
+                line=dict(color="#3182ce", width=2.0, dash="dash"),
+                hovertemplate="<b>보수 시나리오 (지지선)</b>: %{y:.2f}억원<extra></extra>"
+            ))
+            
+            fig_pred.update_layout(
+                title=dict(
+                    text=f"📈 {selected_complex} ({selected_area}㎡) 향후 12개월 3대 시나리오 전망선",
+                    font=dict(size=13.5, color="#1a202c")
+                ),
+                template="plotly_white",
+                height=440,
+                margin=dict(l=15, r=15, t=45, b=15),
+                hovermode="closest",
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="left",
+                    x=0,
+                    font=dict(size=10.5)
+                ),
+                font=dict(family="Pretendard, sans-serif", size=11)
             )
-            fig_dong.update_xaxes(showgrid=True, gridcolor="#edf2f7")
-            st.plotly_chart(fig_dong, use_container_width=True, config={"scrollZoom": False, "displayModeBar": False})
+            fig_pred.update_xaxes(tickformat="%y.%m", nticks=8, tickfont=dict(size=10))
+            fig_pred.update_yaxes(title_text="가격 (억원)", title_font=dict(size=11), tickfont=dict(size=10))
             
-    with col_rank2:
-        st.markdown("###### 🚀 주요 단지별 2021년 전고점(ATH) 대비 현재 회복률 TOP 15")
-        rec_df = get_complex_ath_recovery_leaderboard(sel_macro_reg_code, top_n=15)
-        if not rec_df.empty:
-            rec_display = rec_df[["complex_name", "dong", "region_label", "ath_price", "latest_price", "recovery_rate"]].copy()
-            rec_display["ath_price_str"] = rec_display["ath_price"].apply(format_price_krw)
-            rec_display["latest_price_str"] = rec_display["latest_price"].apply(format_price_krw)
-            rec_display["recovery_rate_str"] = rec_display["recovery_rate"].apply(lambda x: f"{x:.1f}%")
-            
-            table_show = rec_display[["complex_name", "dong", "region_label", "ath_price_str", "latest_price_str", "recovery_rate_str"]].rename(
-                columns={
-                    "complex_name": "단지명",
-                    "dong": "법정동",
-                    "region_label": "지역",
-                    "ath_price_str": "역대 최고가 (ATH)",
-                    "latest_price_str": "최근 실거래가",
-                    "recovery_rate_str": "전고점 회복률"
+            st.plotly_chart(
+                fig_pred,
+                use_container_width=True,
+                config={
+                    "responsive": True,
+                    "displayModeBar": False,
+                    "scrollZoom": False
                 }
             )
-            st.dataframe(table_show, use_container_width=True, hide_index=True, height=420)
+            
+            # 3대 시나리오 비교 테이블
+            f3 = pred_res["forecast_3m"]
+            f6 = pred_res["forecast_6m"]
+            f12 = pred_res["forecast_12m"]
+            
+            scenario_table = pd.DataFrame([
+                {
+                    "예측 시점": f"3개월 후 ({f3['date']})",
+                    "🚀 상승 시나리오 (Bull)": f"{f3['bull_price_str']} ({f3['bull_pct']:+0.1f}%)",
+                    "🎯 기본 시나리오 (Base)": f"{f3['base_price_str']} ({f3['base_pct']:+0.1f}%)",
+                    "🛡️ 보수 시나리오 (Bear)": f"{f3['bear_price_str']} ({f3['bear_pct']:+0.1f}%)",
+                },
+                {
+                    "예측 시점": f"6개월 후 ({f6['date']})",
+                    "🚀 상승 시나리오 (Bull)": f"{f6['bull_price_str']} ({f6['bull_pct']:+0.1f}%)",
+                    "🎯 기본 시나리오 (Base)": f"{f6['base_price_str']} ({f6['base_pct']:+0.1f}%)",
+                    "🛡️ 보수 시나리오 (Bear)": f"{f6['bear_price_str']} ({f6['bear_pct']:+0.1f}%)",
+                },
+                {
+                    "예측 시점": f"1년 후 ({f12['date']})",
+                    "🚀 상승 시나리오 (Bull)": f"{f12['bull_price_str']} ({f12['bull_pct']:+0.1f}%)",
+                    "🎯 기본 시나리오 (Base)": f"{f12['base_price_str']} ({f12['base_pct']:+0.1f}%)",
+                    "🛡️ 보수 시나리오 (Bear)": f"{f12['bear_price_str']} ({f12['bear_pct']:+0.1f}%)",
+                }
+            ])
+            st.dataframe(scenario_table, use_container_width=True, hide_index=True)
+            
+            # =========================================================
+            # 💡 SECTION 4: AI 시장 진단 및 종합 투자 전략 리포트
+            # =========================================================
+            with st.expander("💡 AI 시장 진단 및 종합 투자 가이드 리포트", expanded=True):
+                st.markdown(f"""
+                - **핵심 모멘텀 진단**: **{pred_res['momentum_status']}** (최근 6개월 등락: **{pred_res['recent_momentum_pct']:+0.2f}%**)
+                - **RSI 매수/매도 심리**: **{rsi_data['status']}** (현재 RSI: **{rsi_data['rsi']}점**) - {rsi_data['desc']}
+                - **단기 매매 전략**: 향후 3개월 내 기본 시나리오 기준 약 **{f3['base_price_str']}** 형성 가능성이 높으며, 상단 돌파 시 **{f3['bull_price_str']}**까지 상승 여력이 존재합니다.
+                - **중장기 1년 시세 밴드**: **{f12['bear_price_str']} (보수 하방 지지선) ~ {f12['bull_price_str']} (상승 목표가)** 범위 내에서 형성될 것으로 예상됩니다.
+                - **투자 리스크 요인**: 본 모델은 과거 국토교통부 실거래가의 시간 가중 통계 회귀 모델에 기반하며, 한국은행 기준금리 변동, DSR 대출 규제 정책 및 지역 입주 물량 등 거시적 변수에 따라 실제 거래가격에 차이가 발생할 수 있습니다.
+                """)
 
 
 # -------------------------------------------------------------
-# TAB 4: 실거래 알림 & 관심단지 관리
+# TAB 3: 실거래 알림 & 관심단지 관리
 # -------------------------------------------------------------
-with tab4:
+with tab3:
     st.markdown("##### 🔔 최근 등록된 주요 실거래가 알림 피드")
     
     recent_alerts = get_recent_alerts(limit=15)
