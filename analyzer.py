@@ -227,3 +227,230 @@ def add_moving_averages(df: pd.DataFrame) -> pd.DataFrame:
     ).drop(columns=["deal_date_only"])
     
     return merged
+
+
+def get_regional_macro_timeseries(region_code: Optional[str] = None) -> pd.DataFrame:
+    """
+    18개년 월별 매크로 평당가, 거래량, 최고/최저가 시계열 집계
+    """
+    from database import get_connection
+    where_clause = "WHERE is_cancel = 0"
+    params = []
+    if region_code:
+        where_clause += " AND region_code = ?"
+        params.append(region_code)
+    else:
+        where_clause += " AND region_code IN ('41595', '41461')"
+        
+    query = f"""
+        SELECT 
+            deal_year,
+            deal_month,
+            strftime('%Y-%m', deal_date) as deal_ym,
+            COUNT(*) as trade_count,
+            ROUND(AVG(deal_amount), 1) as avg_amount,
+            ROUND(AVG(deal_amount / (exclusive_area / 3.305785)), 1) as avg_pyeong_price,
+            MAX(deal_amount) as max_amount,
+            MIN(deal_amount) as min_amount
+        FROM transactions
+        {where_clause}
+        GROUP BY deal_year, deal_month
+        ORDER BY deal_year ASC, deal_month ASC
+    """
+    with get_connection() as conn:
+        df = pd.read_sql_query(query, conn, params=params)
+    return df
+
+
+def get_regional_head_to_head() -> Dict[str, Any]:
+    """
+    경기 화성시(41595) vs 용인시 처인구(41461) 18개년 맞비교 지표 산출
+    """
+    from database import get_connection
+    with get_connection() as conn:
+        query = """
+            SELECT 
+                deal_year,
+                region_code,
+                COUNT(*) as trade_count,
+                ROUND(AVG(deal_amount / (exclusive_area / 3.305785)), 1) as avg_pyeong_price,
+                ROUND(AVG(deal_amount), 1) as avg_amount
+            FROM transactions
+            WHERE is_cancel = 0 AND region_code IN ('41595', '41461')
+            GROUP BY deal_year, region_code
+            ORDER BY deal_year ASC
+        """
+        df = pd.read_sql_query(query, conn)
+        
+    if df.empty:
+        return {}
+        
+    hw_df = df[df["region_code"] == "41595"].copy()
+    yi_df = df[df["region_code"] == "41461"].copy()
+    
+    def calc_cagr(sub_df):
+        if len(sub_df) < 2:
+            return 0.0, 0, 0
+        p_start = sub_df.iloc[0]["avg_pyeong_price"]
+        p_end = sub_df.iloc[-1]["avg_pyeong_price"]
+        growth_pct = round(((p_end - p_start) / p_start) * 100, 1) if p_start > 0 else 0.0
+        return growth_pct, int(p_start), int(p_end)
+        
+    hw_growth, hw_start, hw_end = calc_cagr(hw_df)
+    yi_growth, yi_start, yi_end = calc_cagr(yi_df)
+    
+    merged_years = pd.merge(
+        hw_df[["deal_year", "avg_pyeong_price", "trade_count"]].rename(columns={"avg_pyeong_price": "hw_pyeong", "trade_count": "hw_vol"}),
+        yi_df[["deal_year", "avg_pyeong_price", "trade_count"]].rename(columns={"avg_pyeong_price": "yi_pyeong", "trade_count": "yi_vol"}),
+        on="deal_year",
+        how="outer"
+    ).sort_values("deal_year").fillna(0)
+    
+    merged_years["spread_pyeong"] = merged_years["hw_pyeong"] - merged_years["yi_pyeong"]
+    
+    return {
+        "hw_total_trades": int(hw_df["trade_count"].sum()) if not hw_df.empty else 0,
+        "yi_total_trades": int(yi_df["trade_count"].sum()) if not yi_df.empty else 0,
+        "hw_growth": hw_growth,
+        "yi_growth": yi_growth,
+        "hw_start_pyeong": hw_start,
+        "hw_end_pyeong": hw_end,
+        "yi_start_pyeong": yi_start,
+        "yi_end_pyeong": yi_end,
+        "yearly_comparison_df": merged_years
+    }
+
+
+def get_area_mix_distribution(region_code: Optional[str] = None) -> pd.DataFrame:
+    """
+    18개년 시대별 평형대(소형/중형 국평/대형) 거래 비중 및 평균 매매가
+    """
+    from database import get_connection
+    where_clause = "WHERE is_cancel = 0"
+    params = []
+    if region_code:
+        where_clause += " AND region_code = ?"
+        params.append(region_code)
+    else:
+        where_clause += " AND region_code IN ('41595', '41461')"
+        
+    query = f"""
+        SELECT 
+            deal_year,
+            CASE 
+                WHEN exclusive_area <= 59.99 THEN '소형 (59㎡ 이하)'
+                WHEN exclusive_area <= 85.0 THEN '중형 (59~85㎡ 국평)'
+                ELSE '대형 (85㎡ 초과)'
+            END as area_category,
+            COUNT(*) as trade_count,
+            ROUND(AVG(deal_amount), 1) as avg_price,
+            ROUND(AVG(deal_amount / (exclusive_area / 3.305785)), 1) as avg_pyeong_price
+        FROM transactions
+        {where_clause}
+        GROUP BY deal_year, area_category
+        ORDER BY deal_year ASC
+    """
+    with get_connection() as conn:
+        df = pd.read_sql_query(query, conn, params=params)
+        
+    if not df.empty:
+        yearly_totals = df.groupby("deal_year")["trade_count"].transform("sum")
+        df["share_pct"] = round((df["trade_count"] / yearly_totals) * 100, 1)
+        
+    return df
+
+
+def get_dong_price_leaderboard(region_code: Optional[str] = None, top_n: int = 12) -> pd.DataFrame:
+    """
+    법정동별 평당 평균 매매가 랭킹
+    """
+    from database import get_connection
+    where_clause = "WHERE is_cancel = 0 AND dong != ''"
+    params = []
+    if region_code:
+        where_clause += " AND region_code = ?"
+        params.append(region_code)
+    else:
+        where_clause += " AND region_code IN ('41595', '41461')"
+        
+    query = f"""
+        SELECT 
+            dong,
+            region_code,
+            CASE 
+                WHEN region_code = '41595' THEN '화성시 (병점)'
+                WHEN region_code = '41461' THEN '용인시 처인구'
+                ELSE region_code
+            END as region_name,
+            COUNT(*) as total_trades,
+            ROUND(AVG(deal_amount / (exclusive_area / 3.305785)), 1) as avg_pyeong_price,
+            ROUND(AVG(deal_amount), 1) as avg_deal_amount,
+            MAX(deal_amount) as max_deal_amount
+        FROM transactions
+        {where_clause}
+        GROUP BY dong, region_code
+        HAVING total_trades >= 30
+        ORDER BY avg_pyeong_price DESC
+        LIMIT {top_n}
+    """
+    with get_connection() as conn:
+        df = pd.read_sql_query(query, conn, params=params)
+    return df
+
+
+def get_complex_ath_recovery_leaderboard(region_code: Optional[str] = None, top_n: int = 15) -> pd.DataFrame:
+    """
+    주요 아파트 단지별 2021년 역대 최고가(ATH) 대비 현재 실거래가 회복률 랭킹
+    """
+    from database import get_connection
+    where_clause = "WHERE is_cancel = 0"
+    params = []
+    if region_code:
+        where_clause += " AND region_code = ?"
+        params.append(region_code)
+    else:
+        where_clause += " AND region_code IN ('41595', '41461')"
+        
+    query = f"""
+        SELECT 
+            complex_name,
+            dong,
+            region_code,
+            CASE 
+                WHEN region_code = '41595' THEN '화성시'
+                WHEN region_code = '41461' THEN '용인 처인구'
+                ELSE region_code
+            END as region_label,
+            COUNT(*) as total_trades,
+            MAX(deal_amount) as ath_price,
+            ROUND(AVG(exclusive_area), 1) as avg_area
+        FROM transactions
+        {where_clause}
+        GROUP BY complex_name, dong, region_code
+        HAVING total_trades >= 20
+    """
+    with get_connection() as conn:
+        base_df = pd.read_sql_query(query, conn, params=params)
+        
+    if base_df.empty:
+        return pd.DataFrame()
+        
+    with get_connection() as conn:
+        latest_query = f"""
+            SELECT t.complex_name, t.deal_amount as latest_price, t.deal_date as latest_date, t.exclusive_area as latest_area, t.floor as latest_floor
+            FROM transactions t
+            INNER JOIN (
+                SELECT complex_name, MAX(deal_date) as max_date
+                FROM transactions
+                {where_clause}
+                GROUP BY complex_name
+            ) lm ON t.complex_name = lm.complex_name AND t.deal_date = lm.max_date
+            WHERE t.is_cancel = 0
+            GROUP BY t.complex_name
+        """
+        latest_df = pd.read_sql_query(latest_query, conn, params=params)
+        
+    merged = pd.merge(base_df, latest_df, on="complex_name", how="inner")
+    merged["recovery_rate"] = round((merged["latest_price"] / merged["ath_price"]) * 100, 1)
+    merged = merged.sort_values("recovery_rate", ascending=False).head(top_n)
+    return merged
