@@ -40,24 +40,26 @@ st.markdown("""
         font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
     }
     
+    /* 카드 공통 스타일 */
     .metric-card {
         background: linear-gradient(135deg, #f8fafc 0%, #edf2f7 100%);
         border: 1px solid #e2e8f0;
         border-radius: 12px;
-        padding: 18px 20px;
+        padding: 16px 18px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.03);
-        margin-bottom: 12px;
+        margin-bottom: 10px;
     }
     .metric-title {
         font-size: 0.85rem;
         color: #718096;
         font-weight: 600;
-        margin-bottom: 6px;
+        margin-bottom: 4px;
     }
     .metric-value {
-        font-size: 1.6rem;
+        font-size: 1.5rem;
         font-weight: 700;
         color: #1a202c;
+        line-height: 1.2;
     }
     .metric-sub {
         font-size: 0.82rem;
@@ -80,8 +82,8 @@ st.markdown("""
         background-color: #f7fafc;
         border-left: 4px solid #3182ce;
         border-radius: 0 8px 8px 0;
-        padding: 16px 20px;
-        margin: 15px 0;
+        padding: 14px 18px;
+        margin: 12px 0;
     }
     
     .alert-card {
@@ -89,8 +91,43 @@ st.markdown("""
         border: 1px solid #e2e8f0;
         border-left: 4px solid #e53e3e;
         border-radius: 8px;
-        padding: 12px 16px;
-        margin-bottom: 10px;
+        padding: 12px 14px;
+        margin-bottom: 8px;
+    }
+
+    /* 📱 모바일 화면 (스마트폰 / 태블릿) 반응형 최적화 */
+    @media (max-width: 768px) {
+        .metric-card {
+            padding: 12px 14px !important;
+            margin-bottom: 8px !important;
+            border-radius: 10px !important;
+        }
+        .metric-title {
+            font-size: 0.78rem !important;
+            margin-bottom: 2px !important;
+        }
+        .metric-value {
+            font-size: 1.28rem !important;
+        }
+        .metric-sub {
+            font-size: 0.75rem !important;
+        }
+        .diagnosis-box {
+            padding: 12px 14px !important;
+            margin: 8px 0 !important;
+        }
+        /* 탭 바 모바일 최적화 */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 2px !important;
+        }
+        .stTabs [data-baseweb="tab"] {
+            padding: 8px 8px !important;
+            font-size: 0.85rem !important;
+        }
+        /* 데이터프레임 높이 조절 */
+        div[data-testid="stDataFrame"] {
+            font-size: 0.82rem !important;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -383,16 +420,33 @@ with tab1:
         )
         
         fig.update_layout(
-            height=600,
+            height=480,
             template="plotly_white",
-            margin=dict(l=40, r=40, t=40, b=20),
-            hovermode="x unified",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            margin=dict(l=15, r=15, t=35, b=15),
+            hovermode="closest",
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="left",
+                x=0,
+                font=dict(size=10.5)
+            ),
+            font=dict(family="Pretendard, sans-serif", size=11)
         )
-        fig.update_yaxes(title_text="가격 (억원)", row=1, col=1)
-        fig.update_yaxes(title_text="건수", row=2, col=1)
+        fig.update_yaxes(title_text="가격 (억원)", row=1, col=1, title_font=dict(size=11), tickfont=dict(size=10))
+        fig.update_yaxes(title_text="건수", row=2, col=1, title_font=dict(size=11), tickfont=dict(size=10))
+        fig.update_xaxes(tickformat="%y.%m", nticks=8, tickfont=dict(size=10))
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            config={
+                "responsive": True,
+                "displayModeBar": False,
+                "scrollZoom": False
+            }
+        )
         
         # 상세 실거래가 내역 테이블
         st.markdown("##### 📋 상세 실거래가 체결 내역")
@@ -611,16 +665,36 @@ with tab2:
             ))
             
             fig_pred.update_layout(
-                title=f"📈 {selected_complex} ({selected_area}㎡) 향후 12개월 시세 예측 밴드",
+                title=dict(
+                    text=f"📈 {selected_complex} ({selected_area}㎡) 12개월 시세 예측",
+                    font=dict(size=13.5, color="#1a202c")
+                ),
                 template="plotly_white",
-                height=500,
-                xaxis_title="날짜",
-                yaxis_title="가격 (억원)",
-                hovermode="x unified",
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                height=420,
+                margin=dict(l=15, r=15, t=45, b=15),
+                hovermode="closest",
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="left",
+                    x=0,
+                    font=dict(size=10.5)
+                ),
+                font=dict(family="Pretendard, sans-serif", size=11)
             )
+            fig_pred.update_xaxes(tickformat="%y.%m", nticks=8, tickfont=dict(size=10))
+            fig_pred.update_yaxes(title_text="가격 (억원)", title_font=dict(size=11), tickfont=dict(size=10))
             
-            st.plotly_chart(fig_pred, use_container_width=True)
+            st.plotly_chart(
+                fig_pred,
+                use_container_width=True,
+                config={
+                    "responsive": True,
+                    "displayModeBar": False,
+                    "scrollZoom": False
+                }
+            )
             
             # AI 종합 진단 리포트 요약
             with st.expander("💡 AI 시장 진단 및 매수/매도 참고 가이드", expanded=True):
